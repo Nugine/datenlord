@@ -26,6 +26,9 @@
 
 use log::debug;
 
+#[allow(unsafe_code)]
+mod byte_slice;
+
 mod channel;
 mod fs;
 mod fuse_read;

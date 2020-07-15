@@ -625,7 +625,7 @@ impl ReplyXAttr {
 
 #[cfg(test)]
 mod test {
-    use super::super::fuse_request::ByteSlice;
+    use super::super::byte_slice::ByteSlice;
     use super::super::protocol::{FuseAttr, FuseAttrOut, FuseOutHeader};
     use super::ReplyAttr;
     use futures::prelude::*;
