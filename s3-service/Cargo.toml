@@ -7,3 +7,32 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.31"
+futures = "0.3.5"
+async-io = { version = "0.1.5", optional = true }
+
+[dependencies.hyper]
+version = "0.13.7"
+default-features = false
+features = ["stream"]
+
+[dependencies.async-std]
+version = "1.6.2"
+default-features = false
+optional = true
+
+[dependencies.tokio]
+version = "0.2.22"
+default-features = false
+optional = true
+
+[features]
+default = []
+rt-async-std = ["async-std", "async-io", "tokio"]
+
+[dev-dependencies]
+hyper = "0.13.7"
+tokio = { version = "0.2.22", features = ["full"] }
+async-std = { version = "1.6.2", features = ["tokio02", "attributes"] }
+async-io = "0.1.5"
+s3-service = { path = ".", features = ["rt-async-std"] }
