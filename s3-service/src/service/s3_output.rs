@@ -6,9 +6,11 @@ use hyper::{
     Body, StatusCode,
 };
 use rusoto_s3::*;
-use std::borrow::Cow;
 use std::convert::TryFrom;
-use std::io::Write as _;
+use xml::{
+    common::XmlVersion,
+    writer::{EventWriter, XmlEvent},
+};
 
 pub trait S3Output {
     fn try_into_response(self) -> Result<Response>;
@@ -120,10 +122,6 @@ impl S3Output for Result<ListBucketsOutput> {
     fn try_into_response(self) -> Result<Response> {
         match self {
             Ok(output) => {
-                use xml::{
-                    common::XmlVersion,
-                    writer::{EventWriter, XmlEvent},
-                };
                 let mut body = Vec::with_capacity(4096);
                 {
                     let mut w = EventWriter::new(&mut body);
@@ -177,6 +175,37 @@ impl S3Output for Result<ListBucketsOutput> {
                 let mut res = Response::new(Body::from(body));
                 let val = HeaderValue::try_from(mime::TEXT_XML.as_ref())?;
                 res.headers_mut().insert(header::CONTENT_TYPE, val);
+                Ok(res)
+            }
+            Err(e) => {
+                dbg!(e); // TODO
+                let mut res = Response::new(Body::empty());
+                *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                Ok(res)
+            }
+        }
+    }
+}
+
+impl S3Output for Result<GetBucketLocationOutput> {
+    fn try_into_response(self) -> Result<Response> {
+        match self {
+            Ok(output) => {
+                let mut body = Vec::with_capacity(64);
+                let mut w = EventWriter::new(&mut body);
+                w.write(XmlEvent::StartDocument {
+                    version: XmlVersion::Version10,
+                    encoding: Some("UTF-8"),
+                    standalone: None,
+                })?;
+
+                w.write(XmlEvent::start_element("LocationConstraint"))?;
+                if let Some(location_constraint) = output.location_constraint {
+                    w.write(XmlEvent::characters(&location_constraint))?;
+                }
+                w.write(XmlEvent::end_element())?;
+
+                let res = Response::new(Body::from(body));
                 Ok(res)
             }
             Err(e) => {

@@ -18,7 +18,7 @@ impl<'a> S3Path<'a> {
         };
 
         let key = match iter.next() {
-            None => return S3Path::Bucket { bucket },
+            None | Some("") => return S3Path::Bucket { bucket },
             Some(_) => &path[bucket.len() + 2..],
         };
 

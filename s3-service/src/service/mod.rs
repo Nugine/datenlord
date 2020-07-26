@@ -66,16 +66,26 @@ where
 {
     fn hyper_call(&mut self, req: Request) -> BoxFuture<'static, Result<Response, anyhow::Error>> {
         let service = self.clone();
-        Box::pin(async move { service.handle(req).await })
+        Box::pin(async move {
+            let method = req.method().clone();
+            let uri = req.uri().clone();
+            log::debug!("{} \"{:?}\" request:\n{:#?}", method, uri, req);
+            let ret = service.handle(req).await;
+            match &ret {
+                Ok(res) => log::debug!("{} \"{:?}\" => response:\n{:#?}", method, uri, res),
+                Err(err) => log::debug!("{} \"{:?}\" => error:\n{:#?}", method, uri, err),
+            }
+            ret
+        })
     }
 
     async fn handle(&self, req: Request) -> anyhow::Result<Response> {
-        log::debug!("request: {:?}", &req);
         match req.method() {
             &Method::GET => self.handle_get(req).await,
             &Method::POST => self.handle_post(req).await,
             &Method::PUT => self.handle_put(req).await,
             &Method::DELETE => self.handle_delete(req).await,
+            &Method::HEAD => self.handle_head(req).await,
             _ => anyhow::bail!("NotSupported"),
         }
     }
@@ -85,7 +95,15 @@ where
 
         match s3path {
             S3Path::Root => self.inner.list_buckets().await.try_into_response(),
-            S3Path::Bucket { bucket } => anyhow::bail!("NotSupported"),
+            S3Path::Bucket { bucket } => {
+                let input = GetBucketLocationRequest {
+                    bucket: bucket.into(),
+                };
+                self.inner
+                    .get_bucket_location(input)
+                    .await
+                    .try_into_response()
+            }
             S3Path::Object { bucket, key } => {
                 let input = GetObjectRequest {
                     bucket: bucket.into(),
@@ -157,6 +175,20 @@ where
 
                 self.inner.delete_object(input).await.try_into_response()
             }
+        }
+    }
+
+    async fn handle_head(&self, req: Request) -> anyhow::Result<Response> {
+        let s3path = S3Path::new(req.uri().path());
+        match s3path {
+            S3Path::Root => anyhow::bail!("NotSupported"),
+            S3Path::Bucket { bucket } => {
+                let input = HeadBucketRequest {
+                    bucket: bucket.into(),
+                };
+                self.inner.head_bucket(input).await.try_into_response()
+            }
+            S3Path::Object { bucket, key } => anyhow::bail!("NotSupported"),
         }
     }
 }

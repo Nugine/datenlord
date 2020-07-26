@@ -109,4 +109,19 @@ impl S3Storage for FileSystem {
         };
         Ok(output)
     }
+    async fn get_bucket_location(
+        &self,
+        input: GetBucketLocationRequest,
+    ) -> Result<GetBucketLocationOutput> {
+        let output = GetBucketLocationOutput::default();
+        Ok(output)
+    }
+    async fn head_bucket(&self, input: HeadBucketRequest) -> Result<()> {
+        let path = self.get_bucket_path(&input.bucket)?;
+        if path.exists() {
+            Ok(())
+        } else {
+            anyhow::bail!("TODO") // TODO
+        }
+    }
 }
