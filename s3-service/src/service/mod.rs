@@ -10,11 +10,13 @@ use crate::typedef::{Request, Response};
 use futures::future::BoxFuture;
 use futures::stream::StreamExt as _;
 use hyper::Method;
-use rusoto_s3::*;
 use std::io;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use rusoto_s3::*;
+
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub struct S3Service<T> {
     inner: Arc<T>,
@@ -67,12 +69,12 @@ where
             let method = req.method().clone();
             let uri = req.uri().clone();
             log::debug!("{} \"{:?}\" request:\n{:#?}", method, uri, req);
-            let ret = service.handle(req).await;
-            match &ret {
-                Ok(res) => log::debug!("{} \"{:?}\" => response:\n{:#?}", method, uri, res),
+            let result = service.handle(req).await;
+            match &result {
+                Ok(resp) => log::debug!("{} \"{:?}\" => response:\n{:#?}", method, uri, resp),
                 Err(err) => log::debug!("{} \"{:?}\" => error:\n{:#?}", method, uri, err),
             }
-            ret
+            result
         })
     }
 
@@ -125,7 +127,7 @@ where
             S3Path::Bucket { bucket } => {
                 let input: CreateBucketRequest = CreateBucketRequest {
                     bucket: bucket.into(),
-                    ..Default::default()
+                    ..CreateBucketRequest::default()
                 };
                 self.inner.create_bucket(input).await.try_into_response()
             }
@@ -145,7 +147,7 @@ where
                     bucket,
                     key,
                     body: Some(rusoto_core::ByteStream::new(body)),
-                    ..Default::default()
+                    ..PutObjectRequest::default()
                 };
 
                 self.inner.put_object(input).await.try_into_response()
@@ -168,7 +170,7 @@ where
                 let input: DeleteObjectRequest = DeleteObjectRequest {
                     bucket: bucket.into(),
                     key: key.into(),
-                    ..Default::default()
+                    ..DeleteObjectRequest::default()
                 };
 
                 self.inner.delete_object(input).await.try_into_response()

@@ -31,7 +31,7 @@ mod with_async_std {
     }
 
     impl AsyncStdListener {
-        pub fn new(listener: TcpListener) -> Self {
+        pub const fn new(listener: TcpListener) -> Self {
             Self { listener }
         }
     }

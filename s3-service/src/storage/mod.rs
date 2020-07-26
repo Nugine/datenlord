@@ -7,6 +7,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use rusoto_s3::*;
 
+#[allow(clippy::module_name_repetitions)]
 #[async_trait]
 pub trait S3Storage {
     async fn get_object(&self, input: GetObjectRequest) -> Result<GetObjectOutput>;

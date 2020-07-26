@@ -15,7 +15,7 @@ pin_project! {
 }
 
 impl<R> ByteStream<R> {
-    pub(super) fn new(reader: R, buf_size: usize) -> Self {
+    pub(super) const fn new(reader: R, buf_size: usize) -> Self {
         Self { reader, buf_size }
     }
 }
@@ -24,7 +24,7 @@ impl<R: AsyncRead> Stream for ByteStream<R> {
     type Item = io::Result<Bytes>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut buf = vec![0u8; self.buf_size];
+        let mut buf = vec![0_u8; self.buf_size];
 
         let this = self.project();
 

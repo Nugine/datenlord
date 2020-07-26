@@ -50,7 +50,7 @@ impl S3Storage for FileSystem {
         let output: GetObjectOutput = GetObjectOutput {
             body: Some(stream),
             content_length: Some(content_length.try_into()?),
-            ..Default::default()
+            ..GetObjectOutput::default()
         };
         Ok(output)
     }

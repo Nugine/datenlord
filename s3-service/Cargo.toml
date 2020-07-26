@@ -3,7 +3,12 @@ name = "s3-service"
 version = "0.1.0"
 authors = ["Nugine <nugine@foxmail.com>"]
 edition = "2018"
-
+license = "MIT"
+repository = "https://github.com/datenlord/datenlord"
+readme = "README.md"
+description = "s3-service"
+keywords = ["s3"]
+categories = ["web"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

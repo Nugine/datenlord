@@ -34,16 +34,18 @@ impl<'a> S3Path<'a> {
         assert!(path.starts_with('/'));
 
         let mut iter = path.split('/');
-        let _ = iter.next().unwrap();
+        let _ = iter.next().expect("s3-service logic bug");
 
-        let bucket = match iter.next().unwrap() {
+        let bucket = match iter.next().expect("s3-service logic bug") {
             "" => return S3Path::Root,
             s => s,
         };
 
         let key = match iter.next() {
             None | Some("") => return S3Path::Bucket { bucket },
-            Some(_) => &path[bucket.len() + 2..],
+            Some(_) => path
+                .get(bucket.len().saturating_add(2)..)
+                .expect("s3-service logic bug"),
         };
 
         Self::Object { bucket, key }
