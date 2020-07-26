@@ -61,7 +61,7 @@ impl S3Storage for FileSystem {
             let mut reader = tokio::io::stream_reader(body);
             let file = File::create(&path).await?;
             let mut writer = tokio::io::BufWriter::new(file);
-            tokio::io::copy(&mut reader, &mut writer).await?;
+            let _ = tokio::io::copy(&mut reader, &mut writer).await?;
         }
 
         let output = PutObjectOutput::default();
@@ -113,6 +113,7 @@ impl S3Storage for FileSystem {
         &self,
         input: GetBucketLocationRequest,
     ) -> Result<GetBucketLocationOutput> {
+        dbg!(input);
         let output = GetBucketLocationOutput::default();
         Ok(output)
     }

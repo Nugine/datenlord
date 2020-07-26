@@ -13,7 +13,7 @@ mod with_async_std {
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     pub struct AsyncStdExecutor;
 
     impl<F> hyper::rt::Executor<F> for AsyncStdExecutor
@@ -21,7 +21,7 @@ mod with_async_std {
         F: Future + Send + 'static,
     {
         fn execute(&self, fut: F) {
-            task::spawn(async { drop(fut.await) });
+            let _ = task::spawn(async { drop(fut.await) });
         }
     }
 

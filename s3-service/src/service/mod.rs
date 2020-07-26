@@ -5,13 +5,13 @@ use self::s3_output::S3Output;
 use self::s3_path::S3Path;
 
 use crate::storage::S3Storage;
+use crate::typedef::{Request, Response};
 
 use futures::future::BoxFuture;
 use futures::stream::StreamExt as _;
-use hyper::{Body, Method, StatusCode};
+use hyper::Method;
 use rusoto_s3::*;
 use std::io;
-use std::mem;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -41,9 +41,6 @@ impl<T> AsRef<T> for S3Service<T> {
         &*self.inner
     }
 }
-
-type Request = hyper::Request<hyper::Body>;
-type Response = hyper::Response<hyper::Body>;
 
 impl<T> hyper::service::Service<Request> for S3Service<T>
 where
@@ -80,12 +77,12 @@ where
     }
 
     async fn handle(&self, req: Request) -> anyhow::Result<Response> {
-        match req.method() {
-            &Method::GET => self.handle_get(req).await,
-            &Method::POST => self.handle_post(req).await,
-            &Method::PUT => self.handle_put(req).await,
-            &Method::DELETE => self.handle_delete(req).await,
-            &Method::HEAD => self.handle_head(req).await,
+        match *req.method() {
+            Method::GET => self.handle_get(req).await,
+            Method::POST => self.handle_post(req).await,
+            Method::PUT => self.handle_put(req).await,
+            Method::DELETE => self.handle_delete(req).await,
+            Method::HEAD => self.handle_head(req).await,
             _ => anyhow::bail!("NotSupported"),
         }
     }
@@ -116,6 +113,7 @@ where
     }
 
     async fn handle_post(&self, req: Request) -> anyhow::Result<Response> {
+        dbg!(req);
         todo!()
     }
 
@@ -188,7 +186,7 @@ where
                 };
                 self.inner.head_bucket(input).await.try_into_response()
             }
-            S3Path::Object { bucket, key } => anyhow::bail!("NotSupported"),
+            S3Path::Object { .. } => anyhow::bail!("NotSupported"),
         }
     }
 }

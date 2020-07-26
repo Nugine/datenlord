@@ -12,7 +12,7 @@ use xml::{
     writer::{EventWriter, XmlEvent},
 };
 
-pub trait S3Output {
+pub(super) trait S3Output {
     fn try_into_response(self) -> Result<Response>;
 }
 
@@ -26,11 +26,11 @@ impl S3Output for Result<GetObjectOutput> {
                 }
                 if let Some(content_length) = output.content_length {
                     let val = HeaderValue::try_from(format!("{}", content_length))?;
-                    res.headers_mut().insert(header::CONTENT_LENGTH, val);
+                    let _ = res.headers_mut().insert(header::CONTENT_LENGTH, val);
                 }
                 if let Some(content_type) = output.content_type {
                     let val = HeaderValue::try_from(content_type)?;
-                    res.headers_mut().insert(header::CONTENT_TYPE, val);
+                    let _ = res.headers_mut().insert(header::CONTENT_TYPE, val);
                 }
                 // TODO
                 Ok(res)
@@ -52,7 +52,7 @@ impl S3Output for Result<CreateBucketOutput> {
                 let mut res = Response::new(Body::empty());
                 if let Some(location) = output.location {
                     let val = HeaderValue::try_from(location)?;
-                    res.headers_mut().insert(header::LOCATION, val);
+                    let _ = res.headers_mut().insert(header::LOCATION, val);
                 }
                 Ok(res)
             }
@@ -70,7 +70,8 @@ impl S3Output for Result<PutObjectOutput> {
     fn try_into_response(self) -> Result<Response> {
         match self {
             Ok(output) => {
-                let mut res = Response::new(Body::empty());
+                dbg!(output);
+                let res = Response::new(Body::empty());
                 // TODO
                 Ok(res)
             }
@@ -105,6 +106,7 @@ impl S3Output for Result<DeleteObjectOutput> {
     fn try_into_response(self) -> Result<Response> {
         match self {
             Ok(output) => {
+                dbg!(output);
                 let res = Response::new(Body::empty());
                 Ok(res)
             }
@@ -174,7 +176,7 @@ impl S3Output for Result<ListBucketsOutput> {
 
                 let mut res = Response::new(Body::from(body));
                 let val = HeaderValue::try_from(mime::TEXT_XML.as_ref())?;
-                res.headers_mut().insert(header::CONTENT_TYPE, val);
+                let _ = res.headers_mut().insert(header::CONTENT_TYPE, val);
                 Ok(res)
             }
             Err(e) => {

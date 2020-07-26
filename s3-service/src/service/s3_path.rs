@@ -1,20 +1,44 @@
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum S3Path<'a> {
+use std::cmp::{Eq, PartialEq};
+
+#[derive(Debug)]
+pub(super) enum S3Path<'a> {
     Root,
     Bucket { bucket: &'a str },
     Object { bucket: &'a str, key: &'a str },
 }
 
+impl PartialEq for S3Path<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (S3Path::Root, S3Path::Root) => true,
+            (S3Path::Bucket { bucket: lhs }, S3Path::Bucket { bucket: rhs }) => lhs == rhs,
+            (
+                S3Path::Object {
+                    bucket: lhs_bucket,
+                    key: lhs_key,
+                },
+                S3Path::Object {
+                    bucket: rhs_bucket,
+                    key: rhs_key,
+                },
+            ) => lhs_bucket == rhs_bucket && lhs_key == rhs_key,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for S3Path<'_> {}
+
 impl<'a> S3Path<'a> {
-    pub fn new(path: &'a str) -> Self {
+    pub(super) fn new(path: &'a str) -> Self {
         assert!(path.starts_with('/'));
 
         let mut iter = path.split('/');
-        iter.next().unwrap();
+        let _ = iter.next().unwrap();
 
         let bucket = match iter.next().unwrap() {
             "" => return S3Path::Root,
-            s @ _ => s,
+            s => s,
         };
 
         let key = match iter.next() {
