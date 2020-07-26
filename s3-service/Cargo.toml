@@ -11,6 +11,14 @@ anyhow = "1.0.31"
 futures = "0.3.5"
 async-io = { version = "0.1.5", optional = true }
 rusoto_core = "0.44.0"
+thiserror = "1.0.20"
+log = "0.4.11"
+async-trait = "0.1.36"
+bytes = "0.5.6"
+pin-project-lite = "0.1.7"
+xml-rs = "0.8.3"
+path-absolutize = "3.0.5"
+mime = "0.3.16"
 
 [dependencies.rusoto_s3]
 version = "0.44.0"
@@ -41,3 +49,4 @@ tokio = { version = "0.2.22", features = ["full"] }
 async-std = { version = "1.6.2", features = ["tokio02", "attributes"] }
 async-io = "0.1.5"
 s3-service = { path = ".", features = ["rt-async-std"] }
+env_logger = "0.7.1"

@@ -2,17 +2,19 @@ use anyhow::Result;
 use futures::future;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
-use rusoto_core::Region;
-use rusoto_s3::S3Client;
-use s3_service::S3Service;
 use std::net::TcpListener;
+
+use s3_service::{storage::FileSystem, S3Service};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let addr = "127.0.0.1:8080";
-    let region = Region::CnNorth1;
+    env_logger::init();
 
-    let service = S3Service::new(S3Client::new(region));
+    let addr = "127.0.0.1:7026";
+
+    let fs = FileSystem::new("./")?;
+    log::debug!("fs: {:?}", &fs);
+    let service = S3Service::new(fs);
 
     let server = {
         let listener = TcpListener::bind(&addr)?;
@@ -21,7 +23,7 @@ async fn main() -> Result<()> {
         Server::from_tcp(listener)?.serve(make_service)
     };
 
-    eprintln!("server is listening on {}", addr);
+    log::info!("server is listening on {}", addr);
     server.await?;
 
     Ok(())
