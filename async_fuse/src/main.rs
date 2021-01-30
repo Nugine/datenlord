@@ -22,8 +22,6 @@
     // unused_results, // TODO: fix unused results
     variant_size_differences,
 
-    warnings, // treat all wanings as errors
-
     clippy::all,
     clippy::restriction,
     clippy::pedantic,

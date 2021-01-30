@@ -4,6 +4,7 @@ mod abi_marker;
 mod context;
 mod de;
 mod fd;
+mod proactor;
 
 // ioctl_read!() macro involves inter arithmetic
 #[allow(clippy::integer_arithmetic)]

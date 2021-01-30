@@ -21,6 +21,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use utilities::Cast;
 
 use super::context::ProtoVersion;
+use super::proactor::Proactor;
 use crate::memfs::{FileLockParam, FileSystem, RenameParam, SetAttrParam};
 //use super::channel::Channel;
 #[cfg(target_os = "macos")]
@@ -280,11 +281,16 @@ impl Session {
         });
 
         let fuse_fd = self.dev_fd();
+        dbg!(fuse_fd);
         let (idx, mut byte_buf) = pool_receiver.recv()?;
-        let read_result = blocking!(
-            let res = unistd::read(fuse_fd, &mut *byte_buf);
-            (res, byte_buf)
-        );
+        let read_result = {
+            let (_, buf, ret) = Proactor::global().read(fuse_fd, byte_buf).await;
+            // let (_, buf, ret) = Proactor::global()
+            //     .read_in_thread_pool(fuse_fd, byte_buf)
+            //     .await;
+            (ret, buf)
+        };
+        dbg!(&read_result.0);
         byte_buf = read_result.1;
         if let Ok(read_size) = read_result.0 {
             debug!("read successfully {} byte data from FUSE device", read_size);
