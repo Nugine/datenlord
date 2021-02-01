@@ -284,12 +284,17 @@ impl Session {
         dbg!(fuse_fd);
         let (idx, mut byte_buf) = pool_receiver.recv()?;
         let read_result = {
-            let (_, buf, ret) = Proactor::global().read(fuse_fd, byte_buf).await;
+            let len = byte_buf.len();
+            let (_, buf, ret) = Proactor::global().read(fuse_fd, byte_buf, len, 0).await;
             // let (_, buf, ret) = Proactor::global()
             //     .read_in_thread_pool(fuse_fd, byte_buf)
             //     .await;
             (ret, buf)
         };
+        // let read_result = blocking!(
+        //     let res = unistd::read(fuse_fd, &mut *byte_buf);
+        //     (res, byte_buf)
+        // );
         dbg!(&read_result.0);
         byte_buf = read_result.1;
         if let Ok(read_size) = read_result.0 {
