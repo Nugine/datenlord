@@ -25,15 +25,17 @@ use ring_io::sqe::PrepareSqe;
 
 pub struct Proactor {
     op_chan: mpsc::Sender<Box<Operation>>,
-    chan_pool: ChanPool,
+    object_pool: ObjectPool,
 }
 
-type ChanPool = ArrayQueue<(
+type ObjectPool = ArrayQueue<(
     mpsc::Sender<tool::AssertSend<*mut Operation>>,
     mpsc::Receiver<tool::AssertSend<*mut Operation>>,
+    Box<Operation>,
 )>;
 
 enum Operation {
+    Nop,
     Read {
         fd: RawFd,
         buf: AlignedBytes,
@@ -112,10 +114,10 @@ impl Proactor {
         }
         thread::spawn(move || Self::completer(&mut cq, &*complete_event, &*inflight_count));
 
-        let chan_pool = ArrayQueue::new(Self::RING_ENTRIES as usize);
+        let object_pool = ArrayQueue::new(Self::RING_ENTRIES as usize);
         Ok(Self {
             op_chan: tx,
-            chan_pool,
+            object_pool,
         })
     }
 
@@ -144,16 +146,17 @@ impl Proactor {
                 if ops_cnt > 0 {
                     break;
                 }
-                debug!("proactor is waiting an operation");
+                debug!("submitter is waiting an operation");
                 if let Some(op) = op_chan.next().await {
                     Self::prepare(sq, op);
                     ops_cnt = 1;
                 }
             }
 
+            debug!("submitter is submitting");
             let on_err = |err| panic!("proactor failed: {}", err);
             let n_submitted = sq.submit().unwrap_or_else(on_err);
-            debug!("proactor submitted {} sqes", n_submitted);
+            debug!("submitter submitted {} sqes", n_submitted);
             inflight_count.fetch_add(n_submitted, Ordering::SeqCst);
         }
     }
@@ -164,9 +167,9 @@ impl Proactor {
         inflight_count: &AtomicU32,
     ) {
         loop {
-            debug!("proactor enters completer loop");
+            debug!("completer enters loop");
             if cq.ready() == 0 {
-                debug!("proactor is waiting a cqe");
+                debug!("completer is waiting a cqe");
                 cq.wait_cqes(1)
                     .unwrap_or_else(|err| panic!("proactor failed: {}", err));
             }
@@ -176,7 +179,7 @@ impl Proactor {
                 cqes_cnt += 1;
                 unsafe { cq.advance_unchecked(1) };
             }
-            debug!("proactor completed {} cqes", cqes_cnt);
+            debug!("completer completed {} cqes", cqes_cnt);
             let inflight_count = inflight_count
                 .fetch_sub(cqes_cnt, Ordering::SeqCst)
                 .wrapping_sub(cqes_cnt);
@@ -187,13 +190,13 @@ impl Proactor {
     }
 
     fn prepare(sq: &mut SubmissionQueue<'static>, op: Box<Operation>) {
-        debug!("proactor is fetching a sqe");
+        debug!("submitter is fetching a sqe");
         let sqe = loop {
             if let Some(sqe) = sq.get_sqe() {
                 break sqe;
             }
         };
-        debug!("proactor is preparing a sqe");
+        
         let addr = better_as::pointer::to_address(&*op);
         let op = ManuallyDrop::new(op);
         match **op {
@@ -203,6 +206,7 @@ impl Proactor {
                 ref iovecs,
                 ..
             } => unsafe {
+                debug!("submitter is preparing a sqe: readv");
                 sqe.prep_readv(fd, iovecs.as_ptr(), 1, offset)
                     .set_user_data(addr as u64)
             },
@@ -212,10 +216,14 @@ impl Proactor {
                 ref iovecs,
                 ..
             } => unsafe {
+                debug!("submitter is preparing a sqe: writev");
                 sqe.prep_writev(fd, iovecs.as_ptr(), 1, offset)
                     .set_user_data(addr as u64)
             },
+            Operation::Nop => panic!("proactor bug"),
         }
+
+        debug!("submitter prepared a sqe");
     }
 
     fn complete(cqe: &CQE) {
@@ -226,6 +234,7 @@ impl Proactor {
                     *res = cqe.raw_result();
                     tx.try_send(tool::AssertSend::new(op_ptr)).unwrap();
                 }
+                Operation::Nop => {}
             }
         }
     }
@@ -257,6 +266,20 @@ impl Proactor {
         }
     }
 
+    fn create_from_pool(
+        &self,
+    ) -> (
+        mpsc::Sender<tool::AssertSend<*mut Operation>>,
+        mpsc::Receiver<tool::AssertSend<*mut Operation>>,
+        Box<Operation>,
+    ) {
+        self.object_pool.pop().unwrap_or_else(|| {
+            let (tx, rx) = mpsc::channel(1);
+            let op = Box::new(Operation::Nop);
+            (tx, rx, op)
+        })
+    }
+
     #[allow(clippy::cast_sign_loss)]
     pub async fn read(
         &self,
@@ -265,9 +288,9 @@ impl Proactor {
         len: usize,
         offset: isize,
     ) -> (RawFd, AlignedBytes, io::Result<usize>) {
-        let (tx, mut rx) = self.chan_pool.pop().unwrap_or_else(|| mpsc::channel(1));
+        let (tx, mut rx, mut op) = self.create_from_pool();
         let len = len.min(buf.len());
-        let op = Box::new(Operation::Read {
+        *op = Operation::Read {
             iovecs: [libc::iovec {
                 iov_base: buf.as_mut_ptr().cast(),
                 iov_len: len,
@@ -281,13 +304,13 @@ impl Proactor {
             res: 0,
 
             tx,
-        });
-        let op = self.call(op, &mut rx).await;
+        };
+        let mut op = self.call(op, &mut rx).await;
         if let Operation::Read {
             fd, buf, res, tx, ..
-        } = *op
+        } = mem::replace(&mut *op, Operation::Nop)
         {
-            drop(self.chan_pool.push((tx, rx)));
+            drop(self.object_pool.push((tx, rx, op)));
             let result = Self::resultify(res).map(|nread| nread as usize);
             (fd, buf, result)
         } else {
@@ -316,9 +339,9 @@ impl Proactor {
         nbytes: usize,
         offset: isize,
     ) -> (RawFd, AlignedBytes, io::Result<usize>) {
-        let (tx, mut rx) = self.chan_pool.pop().unwrap_or_else(|| mpsc::channel(1));
+        let (tx, mut rx, mut op) = self.create_from_pool();
         let nbytes = nbytes.min(buf.len());
-        let op = Box::new(Operation::Write {
+        *op = Operation::Write {
             iovecs: [libc::iovec {
                 iov_base: buf.as_mut_ptr().cast(),
                 iov_len: nbytes,
@@ -332,13 +355,13 @@ impl Proactor {
             res: 0,
 
             tx,
-        });
-        let op = self.call(op, &mut rx).await;
+        };
+        let mut op = self.call(op, &mut rx).await;
         if let Operation::Write {
             fd, buf, res, tx, ..
-        } = *op
+        } = mem::replace(&mut *op, Operation::Nop)
         {
-            drop(self.chan_pool.push((tx, rx)));
+            drop(self.object_pool.push((tx, rx, op)));
             let result = Self::resultify(res).map(|nread| nread as usize);
             (fd, buf, result)
         } else {

@@ -142,6 +142,7 @@ impl Session {
     }
 
     /// Run the FUSE session
+    #[allow(clippy::wildcard_enum_match_arm)]
     pub async fn run(&self) -> anyhow::Result<()> {
         let (pool_sender, pool_receiver) = self
             .setup_buffer_pool()
@@ -149,12 +150,20 @@ impl Session {
             .context("failed to setup buffer pool")?;
         let fuse_dev_fd = self.dev_fd();
         loop {
-            let (buffer_idx, mut byte_buffer) = pool_receiver.recv()?;
+            let (buffer_idx,  byte_buffer) = pool_receiver.recv()?;
 
-            let (res, byte_buffer) = blocking!(
-                let res = unistd::read(fuse_dev_fd, &mut *byte_buffer);
-                (res, byte_buffer)
-            );
+            // let (res, byte_buffer) = blocking!(
+            //     let res = unistd::read(fuse_dev_fd, &mut *byte_buffer);
+            //     (res, byte_buffer)
+            // );
+
+            let (res, byte_buffer) = {
+                let len = byte_buffer.len();
+                let (_, buf, ret) = Proactor::global()
+                    .read(fuse_dev_fd, byte_buffer, len, 0)
+                    .await;
+                (ret, buf)
+            };
 
             match res {
                 Ok(read_size) => {
@@ -178,24 +187,24 @@ impl Session {
                     .detach(); // Run in parallel
                 }
                 Err(err) => {
-                    let err_msg = crate::util::format_nix_error(err); // TODO: refactor format_nix_error()
-                    error!(
-                        "failed to receive from FUSE kernel, the error is: {}",
-                        err_msg
-                    );
-                    match err.as_errno() {
+                    // let err_msg = crate::util::format_nix_error(err); // TODO: refactor format_nix_error()
+                    error!("failed to receive from FUSE kernel, the error is: {}", err);
+                    let errno = err
+                        .raw_os_error()
+                        .unwrap_or_else(|| panic!("io error: {}", err));
+                    match Errno::from_i32(errno) {
                         // Operation interrupted. Accordingly to FUSE, this is safe to retry
-                        Some(Errno::ENOENT) => {
+                        Errno::ENOENT => {
                             info!("operation interrupted, retry.");
                         }
                         // Interrupted system call, retry
-                        Some(Errno::EINTR) => {
+                        Errno::EINTR => {
                             info!("interrupted system call, retry");
                         }
                         // Explicitly try again
-                        Some(Errno::EAGAIN) => info!("Explicitly retry"),
+                        Errno::EAGAIN => info!("Explicitly retry"),
                         // Filesystem was unmounted, quit the loop
-                        Some(Errno::ENODEV) => {
+                        Errno::ENODEV => {
                             if FUSE_DESTROYED.load(Ordering::Acquire) {
                                 info!("filesystem destroyed, quit the run loop");
                             } else {
@@ -204,11 +213,11 @@ impl Session {
                             break;
                         }
                         // Unhandled error
-                        Some(..) | None => {
+                        _ => {
                             panic!(
                                 "non-recoverable io error when read FUSE device, \
                                     the error is: {}",
-                                err_msg,
+                                err,
                             );
                             // break;
                         }
